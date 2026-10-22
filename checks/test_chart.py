@@ -82,6 +82,20 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(route["spec"]["http"][0]["match"], [{"uri": {"prefix": "/"}}])
         self.assertEqual(route["spec"]["http"][0]["rewrite"], {"uri": "/"})
 
+    def test_route_metadata_matches_pcai_openwebui_conventions(self):
+        docs = render()
+        route = next(d for d in docs if d["kind"] == "VirtualService")
+        self.assertEqual(route["apiVersion"], "networking.istio.io/v1alpha3")
+        self.assertEqual(route["metadata"]["name"], "probe-test-pcai-inference-probe-virtual-service")
+        self.assertEqual(route["metadata"]["namespace"], "probe-namespace")
+        self.assertNotIn("labels", route["metadata"])
+        deployment = next(d for d in docs if d["kind"] == "Deployment")
+        self.assertEqual(deployment["spec"]["template"]["metadata"]["labels"]["hpe-ezua/type"], "vendor-service")
+        self.assertNotIn("ClusterPolicy", {d["kind"] for d in docs})
+        pvc = next(d for d in docs if d["kind"] == "PersistentVolumeClaim")
+        self.assertEqual(pvc["metadata"]["name"], "probe-test-cache")
+        self.assertEqual(pvc["metadata"]["annotations"]["helm.sh/resource-policy"], "keep")
+
     def test_route_timeout_requires_more_than_one_millisecond(self):
         for timeout in ["0s", "0ms", "1ms", "-1s", "invalid"]:
             with self.subTest(timeout=timeout):
