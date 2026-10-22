@@ -58,6 +58,49 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(container["startupProbe"]["httpGet"]["path"], "/readyz")
         self.assertGreater(container["startupProbe"]["failureThreshold"] * container["startupProbe"]["periodSeconds"], 600)
 
+    def test_wireguard_is_absent_unless_explicitly_enabled(self):
+        deployment = next(d for d in render() if d["kind"] == "Deployment")
+        spec = deployment["spec"]["template"]["spec"]
+        self.assertEqual([c["name"] for c in spec["containers"]], ["probe"])
+        self.assertNotIn("wireguard-config", [v["name"] for v in spec["volumes"]])
+        for container in spec["containers"]:
+            self.assertNotIn("/var/run/wireguard", [m["mountPath"] for m in container["volumeMounts"]])
+
+    def test_wireguard_uses_required_secret_and_no_network_privileges(self):
+        docs = render({"wireguard": {"enabled": True, "existingSecret": "test-wireguard"}})
+        deployment = next(d for d in docs if d["kind"] == "Deployment")
+        spec = deployment["spec"]["template"]["spec"]
+        sidecar = next(c for c in spec["containers"] if c["name"] == "wireguard")
+        self.assertIn("@sha256:", sidecar["image"])
+        self.assertEqual(sidecar["securityContext"]["capabilities"], {"drop": ["ALL"]})
+        self.assertTrue(sidecar["securityContext"]["readOnlyRootFilesystem"])
+        self.assertFalse(sidecar["securityContext"]["allowPrivilegeEscalation"])
+        self.assertNotIn("privileged", sidecar["securityContext"])
+        self.assertNotIn("hostNetwork", spec)
+        self.assertNotIn("NET_ADMIN", json.dumps(spec))
+        self.assertNotIn("/dev/net/tun", json.dumps(spec))
+        self.assertEqual(sidecar["args"][0:2], ["--config", "/var/run/wireguard/wireproxy.conf"])
+        self.assertTrue(sidecar["volumeMounts"][0]["readOnly"])
+        secret = next(v for v in spec["volumes"] if v["name"] == "wireguard-config")["secret"]
+        self.assertEqual(secret["secretName"], "test-wireguard")
+        self.assertEqual(secret["defaultMode"], 0o440)
+        self.assertFalse(secret.get("optional", False))
+        self.assertEqual(secret["items"], [{"key": "wireproxy.conf", "path": "wireproxy.conf"}])
+        self.assertEqual(sidecar["readinessProbe"]["httpGet"]["path"], "/readyz")
+        service = next(d for d in docs if d["kind"] == "Service")
+        self.assertEqual([p["port"] for p in service["spec"]["ports"]], [8080])
+        self.assertEqual(len(spec["volumes"]), 4)
+
+    def test_wireguard_bad_credentials_or_resources_rejected(self):
+        for values in [
+            {"wireguard": {"enabled": True}},
+            {"wireguard": {"image": {"digest": ""}}},
+            {"wireguard": {"resources": {"limits": {"nvidia.com/gpu": 1}}}},
+            {"wireguard": {"privateKey": "must-not-be-accepted-inline"}},
+        ]:
+            with self.subTest(values=values):
+                render(values, success=False)
+
     def test_numeric_environment_is_decimal_not_scientific_notation(self):
         for values, expected_body, expected_delay in [
             ({}, "8388608", "0"),

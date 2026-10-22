@@ -102,7 +102,55 @@ spec:
               mountPath: /dev/shm
             - name: cache
               mountPath: /var/lib/pcai-probe
+        {{- if .Values.wireguard.enabled }}
+        - name: wireguard
+          image: {{ printf "%s@%s" .Values.wireguard.image.repository .Values.wireguard.image.digest | quote }}
+          imagePullPolicy: {{ .Values.wireguard.image.pullPolicy }}
+          args:
+            - --config
+            - /var/run/wireguard/wireproxy.conf
+            - --silent
+            - --info
+            - 0.0.0.0:9081
+          ports:
+            - name: wg-health
+              containerPort: 9081
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.wireguard.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: wg-health
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: wg-health
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: wireguard-config
+              mountPath: /var/run/wireguard
+              readOnly: true
+        {{- end }}
       volumes:
+        {{- if .Values.wireguard.enabled }}
+        - name: wireguard-config
+          secret:
+            secretName: {{ required "Set wireguard.existingSecret when wireguard.enabled=true" .Values.wireguard.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.wireguard.secretKey | quote }}
+                path: wireproxy.conf
+        {{- end }}
         - name: probe-key
           secret:
             secretName: {{ $secret | quote }}

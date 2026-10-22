@@ -53,6 +53,8 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Non-root container smoke (no GPU)
         run: python checks/container_smoke.py
+      - name: TUN-less WireGuard configuration smoke (no VPN connection)
+        run: python checks/wireguard_image_smoke.py
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: docker/login-action@v3

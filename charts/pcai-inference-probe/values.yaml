@@ -34,6 +34,24 @@ persistence:
   accessMode: ReadWriteOnce
   retainOnDelete: true
 
+# Optional TUN-less WireGuard reverse TCP sidecar. Never creates its credential Secret.
+wireguard:
+  enabled: false
+  image:
+    repository: ghcr.io/windtf/wireproxy
+    tag: 31a9a34498267d7fb8aeff05aba79d929b15eb39
+    digest: sha256:24db66eec033a080d62ff2e39f8df36c215696053114d97e683873cbc18b7537
+    pullPolicy: IfNotPresent
+  existingSecret: ""
+  secretKey: wireproxy.conf
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
 maxBodyBytes: 8388608
 readyDelaySeconds: 0
 nodeSelector: {}

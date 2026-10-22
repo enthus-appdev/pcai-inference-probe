@@ -171,6 +171,48 @@ unset PROBE_KEY
 
 Do not add `--location`, `--verbose` or trace options to credentialed probes. For SSE use `--no-buffer` and a client deadline longer than the chosen bounded test. Compare arrival timestamps, not just final response contents, to detect buffering. Browser fetch chunks can combine multiple SSE events; timestamps are observed chunk arrival, not exact per-event network timing.
 
+## Optional WireGuard sidecar
+
+`wireguard.enabled` defaults to **false**. With it disabled, the pod has no VPN container or VPN Secret mount. Enable only for an approved private transport path:
+
+```yaml
+wireguard:
+  enabled: true
+  existingSecret: probe-wireguard
+  secretKey: wireproxy.conf
+```
+
+The sidecar uses the pinned upstream [wireproxy](https://github.com/windtf/wireproxy/tree/31a9a34498267d7fb8aeff05aba79d929b15eb39) image with a userspace WireGuard/netstack TCP server tunnel. It requires no host network, kernel WireGuard interface, `/dev/net/tun`, privileged mode or `NET_ADMIN`. It has separate CPU/memory requests and limits, inherits the admitted non-root pod identity, drops all capabilities and uses a read-only root filesystem.
+
+Create the referenced Secret in the release namespace, containing a complete `wireproxy.conf`. Keep private keys and optional preshared keys **only in the Secret**, not in chart values, image layers, Git or logs. The mount is read-only and appears only in the WireGuard container. The feature is optional; when enabled, its credential Secret is required, not an `optional: true` Kubernetes volume. Secret changes require a sidecar/pod restart because the process reads configuration at startup.
+
+Example configuration structure (documentation addresses and placeholders, not deployable credentials):
+
+```ini
+[Interface]
+Address = 10.44.0.2/32
+PrivateKey = REPLACE_WITH_SECRET_PRIVATE_KEY
+MTU = 1280
+CheckAlive = 10.44.0.1
+CheckAliveInterval = 10
+
+[Peer]
+PublicKey = REPLACE_WITH_SERVER_PUBLIC_KEY
+Endpoint = 198.51.100.20:51820
+AllowedIPs = 10.44.0.1/32
+PersistentKeepalive = 25
+
+[TCPServerTunnel]
+ListenPort = 8080
+Target = 127.0.0.1:8080
+```
+
+The server must separately authorize this dedicated peer public key and route its `/32` address. Keep `AllowedIPs` narrow rather than sending the pod's default traffic through the VPN. Outbound UDP and return traffic must be permitted. The tunnel exposes only the configured TCP target, not arbitrary pod/cluster networking. Bifrost or another approved client reaches the VPN peer IP and the probe port; the probe API key remains mandatory. WireGuard provides encrypted transport, **not** the existing gateway's browser SSO or authorization policy. Configure edge authentication explicitly before any public exposure.
+
+Readiness uses wireproxy's `/readyz` on its internal status port9081. Set `CheckAlive` in the Secret to an approved reachable VPN address to make this reflect a tunnel-side ping; without it, readiness only establishes that the status process is running. Liveness checks the status listener, not VPN connectivity, so an outage does not continually restart the application. The chart's Service does not expose9081; do not publish wireproxy's diagnostic endpoints. A configured sidecar is not proof of a successful handshake or end-to-end Bifrost connection.
+
+Disable `wireguard.enabled` to remove the sidecar/mount. Peer removal, revocation of tunnel credentials and deletion of the dedicated Secret are separate operator cleanup steps; do not remove existing server peers or the retained model-cache PVC.
+
 ## Runtime settings
 
 `PROBE_API_KEY_FILE` (default `/var/run/probe-key/api-key`), `PROBE_CACHE_DIR`, `PROBE_MAX_BODY_BYTES`, `PROBE_READY_DELAY_SECONDS`, `PROBE_CACHE_PERSISTENT` and `PORT` are operator configuration. The Helm chart supplies fixed safe paths and port 8080. It intentionally has no arbitrary environment, sidecar, init-container, hostPath, RBAC or extra-resource passthrough.
