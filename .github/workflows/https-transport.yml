@@ -1,0 +1,51 @@
+name: Optional HTTPS transport image
+on:
+  push:
+    branches: [main]
+    paths:
+      - tunnel-https/**
+      - checks/https_image_smoke.py
+      - .github/workflows/https-transport.yml
+  pull_request:
+    paths:
+      - tunnel-https/**
+      - checks/https_image_smoke.py
+      - .github/workflows/https-transport.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  transport:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./tunnel-https
+          platforms: linux/amd64
+          load: true
+          tags: pcai-wg-https:local
+          provenance: false
+      - name: Non-root restricted startup smoke
+        run: python3 checks/https_image_smoke.py
+      - uses: docker/login-action@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          context: ./tunnel-https
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/enthus-appdev/pcai-inference-probe:wireguard-https-sha-${{ github.sha }}
+            ghcr.io/enthus-appdev/pcai-inference-probe:wireguard-https-latest
+          provenance: mode=max
+          sbom: true
