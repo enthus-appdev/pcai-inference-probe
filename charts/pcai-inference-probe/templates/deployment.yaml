@@ -64,9 +64,9 @@ spec:
             - name: PROBE_CACHE_PERSISTENT
               value: {{ .Values.persistence.enabled | quote }}
             - name: PROBE_MAX_BODY_BYTES
-              value: {{ .Values.maxBodyBytes | quote }}
+              value: {{ .Values.maxBodyBytes | int64 | toString | quote }}
             - name: PROBE_READY_DELAY_SECONDS
-              value: {{ .Values.readyDelaySeconds | quote }}
+              value: {{ .Values.readyDelaySeconds | int64 | toString | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

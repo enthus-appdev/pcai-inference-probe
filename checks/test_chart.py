@@ -56,6 +56,21 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(container["startupProbe"]["httpGet"]["path"], "/readyz")
         self.assertGreater(container["startupProbe"]["failureThreshold"] * container["startupProbe"]["periodSeconds"], 600)
 
+    def test_numeric_environment_is_decimal_not_scientific_notation(self):
+        for values, expected_body, expected_delay in [
+            ({}, "8388608", "0"),
+            ({"maxBodyBytes": 8.388608e6, "readyDelaySeconds": 6e2}, "8388608", "600"),
+            ({"maxBodyBytes": 33554432, "readyDelaySeconds": 600}, "33554432", "600"),
+        ]:
+            with self.subTest(values=values):
+                deployment = next(d for d in render(values) if d["kind"] == "Deployment")
+                container = deployment["spec"]["template"]["spec"]["containers"][0]
+                env = {e["name"]: e["value"] for e in container["env"]}
+                self.assertEqual(env["PROBE_MAX_BODY_BYTES"], expected_body)
+                self.assertEqual(env["PROBE_READY_DELAY_SECONDS"], expected_delay)
+                self.assertEqual(str(int(env["PROBE_MAX_BODY_BYTES"])), expected_body)
+                self.assertEqual(str(int(env["PROBE_READY_DELAY_SECONDS"])), expected_delay)
+
     def test_route_is_release_namespace_aware(self):
         docs = render({"ezua": {"virtualService": {"endpoint": "probe.example.invalid"}}})
         route = next(d for d in docs if d["kind"] == "VirtualService")
