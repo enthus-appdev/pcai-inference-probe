@@ -12,7 +12,7 @@ A standalone, **CPU-only** application and Helm framework chart for testing the 
 | Proxy timeouts | Authenticated delayed responses, bounded to 600 seconds |
 | Request-size limits | Streamed upload byte count and SHA-256, without echoing the body |
 | Shared memory | Actual `/dev/shm` capacity/type plus bounded write-and-cleanup tests |
-| Storage | Cache filesystem diagnostics, optional PVC, create-once persistence marker |
+| Storage | Cache filesystem diagnostics, retained PVC by default, create-once persistence marker |
 | Lifecycle | Separate startup/readiness/liveness probes; optional delayed readiness |
 | Resource accounting | Allowlisted cgroup-v2 memory/CPU/pid counters, UID/GID and CPU affinity |
 
@@ -20,7 +20,7 @@ This does **not** qualify NCCL, TP2, model loading, GPU memory, inference correc
 
 ## Security and resource bounds
 
-- API key is mandatory. Only `/`, `/app.js`, `/healthz` and `/readyz` are public **at the application layer**; the platform gateway can still protect them.
+- API key is mandatory. This is an application design choice, not a PCAI requirement. The chart references an existing namespace-local Secret and **does not create it**; create it before deployment. Keep the same Secret reference across upgrades. Only `/`, `/app.js`, `/healthz` and `/readyz` are public **at the application layer**; the platform gateway can still protect them.
 - Supply the key through `Authorization: Bearer …` **or** `X-Probe-API-Key: …`. The separate header leaves `Authorization` available for a platform-validated JWT. The probe does not validate that JWT itself.
 - No shell/exec endpoint, arbitrary file paths, outbound HTTP, environment dump, Kubernetes token mount, host access, privileged mode or application RBAC.
 - Keys, cookies, prompts, request bodies, query strings and unknown path contents are not logged. Diagnostics expose only allowlisted data. The browser does not save the key in local/session storage or URLs.
@@ -107,7 +107,7 @@ Do not commit/paste the key, put it in Helm values or include it in diagnostic e
 
 ### Authentication interpretation
 
-The default chart creates a VirtualService, **not a gateway-auth bypass**. `ezua.authorizationPolicy.enabled: false` merely avoids adding a new policy; existing gateway CUSTOM/ALLOW/DENY/JWT policies remain effective.
+The default chart creates a VirtualService with explicit root-prefix matching and root-prefix rewriting, **not a gateway-auth bypass**. External TLS depends on PCAI registering this hostname and its certificate with the shared gateway. A healthy internal service does not establish external TLS readiness; inspect VirtualService/controller events if the TLS handshake fails. HTTP route matching cannot repair a missing gateway TLS listener or failed certificate-controller reconciliation. `ezua.authorizationPolicy.enabled: false` merely avoids adding a new policy; existing gateway CUSTOM/ALLOW/DENY/JWT policies remain effective.
 
 An optional host-scoped CUSTOM AuthorizationPolicy can be rendered only after platform approval and verification of provider name, gateway selector and policy namespace. Its defaults are examples, not a verified installed platform contract. Enabling it requires cross-namespace permissions and can trigger browser OIDC authentication. No RequestAuthentication, mesh provider, OAuth2Proxy or cluster-wide policy is installed.
 
@@ -123,9 +123,9 @@ Use the public page's anonymous model-list button, then the keyed request:
 
 Use HTTPS externally. Do not follow redirects while sending a key. The browser test blocks redirects and does not display non-JSON gateway response bodies. Header-presence booleans help distinguish stripping from application rejection without exposing credentials.
 
-### Optional persistence
+### Persistent storage
 
-By default `/var/lib/pcai-probe` uses a 256 MiB **pod-local emptyDir**, not durable storage. It survives container restart within the same pod, not pod replacement.
+By default `/var/lib/pcai-probe` uses a dedicated **1 GiB PVC** named `<release-name>-cache`, retained on chart removal. This is a small persistence qualification volume, not storage sized for large model weights. Setting `persistence.enabled: false` opts into a 256 MiB pod-local emptyDir instead; that data does not survive pod replacement.
 
 For an authorized existing claim in the release namespace:
 
@@ -135,11 +135,13 @@ persistence:
   existingClaim: your-approved-probe-claim
 ```
 
-Or enable persistence with an empty `existingClaim` to provision a new 1 GiB PVC, explicitly selecting an approved `storageClass` if necessary. Null omits StorageClass selection; an empty string explicitly disables dynamic class selection. Access mode defaults to `ReadWriteOnce`. No model data should be placed on this diagnostic claim.
+Leave `existingClaim` empty to provision the default new 1 GiB PVC, explicitly selecting an approved `storageClass` if necessary. Null omits StorageClass selection; an empty string explicitly disables dynamic class selection. Access mode defaults to `ReadWriteOnce`. No model data should be placed on this diagnostic claim.
 
 The chart-created PVC has `helm.sh/resource-policy: keep` by default. Confirm controller/storage reclaim behavior before removal. Existing claims are never chart-owned. Reattaching a retained claim should use `existingClaim` explicitly; uninstall/reimport is not an assumed rollback strategy.
 
-Create the marker once, record its returned ID, replace the **pod** deliberately, then verify the same marker ID with a different diagnostics `instance_id`. The API never overwrites an existing marker. Configuration saying `cache_expected_persistent: true` is not proof of actual durability.
+Create the marker once, record its returned ID, replace the **pod** deliberately, then verify the same marker ID with a different diagnostics `instance_id`. Repeat after a Helm upgrade, keeping the same release name, namespace and claim name. The chart does not make image tags part of the PVC name. The API never overwrites an existing marker. Configuration saying `cache_expected_persistent: true` is not proof of actual durability.
+
+For later inference deployments, use a separately sized durable model-weight claim and mount the same claim/cache path across engine-image upgrades (for example via `HF_HOME` or the engine's download-directory option). Preserve pinned model revisions so a different revision is not mistaken for a cache miss. A PVC stores model files, not container-image layers, which are cached separately by the node runtime. No model download is performed by this probe.
 
 ## API reference
 

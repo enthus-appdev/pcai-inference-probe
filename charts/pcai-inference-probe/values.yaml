@@ -25,8 +25,9 @@ resources:
 shm:
   sizeLimit: 2Gi
 
+# A dedicated small PVC for persistence qualification; not sized for model weights.
 persistence:
-  enabled: false
+  enabled: true
   existingClaim: ""
   size: 1Gi
   storageClass: null

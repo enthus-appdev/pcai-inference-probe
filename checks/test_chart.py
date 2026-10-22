@@ -30,7 +30,7 @@ def render(values=None, success=True):
 class ChartTests(unittest.TestCase):
     def test_cpu_only_restricted_defaults(self):
         docs = render()
-        self.assertEqual({d["kind"] for d in docs}, {"Deployment", "Service", "VirtualService"})
+        self.assertEqual({d["kind"] for d in docs}, {"Deployment", "Service", "VirtualService", "PersistentVolumeClaim"})
         deployment = next(d for d in docs if d["kind"] == "Deployment")
         spec = deployment["spec"]["template"]["spec"]
         self.assertFalse(spec["automountServiceAccountToken"])
@@ -50,7 +50,9 @@ class ChartTests(unittest.TestCase):
             self.assertEqual(set(quantities), {"cpu", "memory", "ephemeral-storage"})
         volumes = {v["name"]: v for v in spec["volumes"]}
         self.assertEqual(volumes["shm"]["emptyDir"], {"medium": "Memory", "sizeLimit": "2Gi"})
-        self.assertIn("emptyDir", volumes["cache"])
+        self.assertEqual(volumes["cache"]["persistentVolumeClaim"]["claimName"], "probe-test-cache")
+        env = {e["name"]: e["value"] for e in container["env"]}
+        self.assertEqual(env["PROBE_CACHE_PERSISTENT"], "true")
         self.assertEqual(volumes["probe-key"]["secret"]["secretName"], "pcai-inference-probe-api")
         self.assertEqual(volumes["probe-key"]["secret"]["defaultMode"], 0o440)
         self.assertEqual(container["startupProbe"]["httpGet"]["path"], "/readyz")
@@ -77,6 +79,8 @@ class ChartTests(unittest.TestCase):
         self.assertEqual(route["spec"]["hosts"], ["probe.example.invalid"])
         self.assertEqual(route["spec"]["http"][0]["route"][0]["destination"]["host"], "probe-test.probe-namespace.svc.cluster.local")
         self.assertEqual(route["spec"]["http"][0]["timeout"], "900s")
+        self.assertEqual(route["spec"]["http"][0]["match"], [{"uri": {"prefix": "/"}}])
+        self.assertEqual(route["spec"]["http"][0]["rewrite"], {"uri": "/"})
 
     def test_route_timeout_requires_more_than_one_millisecond(self):
         for timeout in ["0s", "0ms", "1ms", "-1s", "invalid"]:
@@ -87,7 +91,29 @@ class ChartTests(unittest.TestCase):
                 render({"ezua": {"virtualService": {"timeout": timeout}}})
 
     def test_local_no_istio_render(self):
-        self.assertEqual({d["kind"] for d in render({"ezua": {"virtualService": {"enabled": False}}})}, {"Deployment", "Service"})
+        self.assertEqual({d["kind"] for d in render({"ezua": {"virtualService": {"enabled": False}}})}, {"Deployment", "Service", "PersistentVolumeClaim"})
+
+    def test_ephemeral_storage_requires_explicit_opt_out(self):
+        docs = render({"persistence": {"enabled": False}})
+        self.assertNotIn("PersistentVolumeClaim", {d["kind"] for d in docs})
+        deployment = next(d for d in docs if d["kind"] == "Deployment")
+        container = deployment["spec"]["template"]["spec"]["containers"][0]
+        env = {e["name"]: e["value"] for e in container["env"]}
+        self.assertEqual(env["PROBE_CACHE_PERSISTENT"], "false")
+        cache = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "cache")
+        self.assertEqual(cache["emptyDir"]["sizeLimit"], "256Mi")
+
+    def test_upgrade_and_existing_claim_keep_stable_storage_identity(self):
+        before = render()
+        after = render({"image": {"tag": "upgrade-test"}, "readyDelaySeconds": 1})
+        def claim(docs):
+            pvc = next(d for d in docs if d["kind"] == "PersistentVolumeClaim")
+            deployment = next(d for d in docs if d["kind"] == "Deployment")
+            volume = next(v for v in deployment["spec"]["template"]["spec"]["volumes"] if v["name"] == "cache")
+            self.assertEqual(pvc["metadata"]["annotations"]["helm.sh/resource-policy"], "keep")
+            return pvc["metadata"]["name"], volume["persistentVolumeClaim"]["claimName"]
+        self.assertEqual(claim(before), claim(after))
+        self.assertEqual(claim(before), ("probe-test-cache", "probe-test-cache"))
 
     def test_new_pvc_is_retained(self):
         docs = render({"persistence": {"enabled": True, "storageClass": "test-storage"}})
@@ -125,7 +151,7 @@ class ChartTests(unittest.TestCase):
 
     def test_controller_metadata_is_accepted_but_not_rendered(self):
         docs = render({"reconfigureTimestamp": "test", "ezua": {"retries": {"lastRetryTimestamp": "test"}}})
-        self.assertEqual(len(docs), 3)
+        self.assertEqual(len(docs), 4)
 
     def test_image_digest_overrides_tag(self):
         digest = "sha256:" + "a" * 64

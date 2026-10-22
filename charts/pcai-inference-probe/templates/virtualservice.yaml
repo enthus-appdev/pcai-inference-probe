@@ -11,7 +11,12 @@ spec:
   gateways:
     - {{ .Values.ezua.virtualService.istioGateway | quote }}
   http:
-    - timeout: {{ .Values.ezua.virtualService.timeout | quote }}
+    - match:
+        - uri:
+            prefix: /
+      rewrite:
+        uri: /
+      timeout: {{ .Values.ezua.virtualService.timeout | quote }}
       retries:
         attempts: 0
       route:
