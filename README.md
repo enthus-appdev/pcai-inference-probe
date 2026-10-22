@@ -62,7 +62,7 @@ The **`pcai-inference-probe-framework`** workflow artifact contains:
 
 - A Helm `.tgz` and identical `.tar.gz` copy for UI extension compatibility.
 - `SHA256SUMS` and `IMAGE.txt`.
-- Chart version `0.1.0-ci.<workflow-run-number>` with its **published image digest pinned** in packaged defaults.
+- Source chart version plus `-ci.<workflow-run-number>` with its **published image digest pinned** in packaged defaults.
 
 The source chart defaults to `latest`; use the CI artifact or override `image.digest` for a reproducible deployment. First publication may require an organization/package administrator to make the GHCR package public; repository visibility alone is not proof of anonymous package access. For private packages, use an authorized `imagePullSecrets` reference.
 
@@ -83,12 +83,12 @@ ezua:
     enabled: true
     endpoint: "pcai-probe.${DOMAIN_NAME}"
     istioGateway: istio-system/ezaf-gateway
-    timeout: 0s
+    timeout: 900s
   authorizationPolicy:
     enabled: false
 ```
 
-`timeout: 0s` disables the chart route's overall request timeout; other gateway/auth/LB idle limits still apply. Use an explicit hostname instead of `${DOMAIN_NAME}` if that substitution is unsupported. Choose a controller/Helm timeout allowing the readiness delay, image pull and scheduling time; the chart's startup budget is 750 seconds and progress deadline is 1,200 seconds, independently.
+`timeout: 900s` allows the probe's maximum 600-second test. The installed PCAI Istio validation rejects `0s` (even though some upstream Istio versions use zero to disable the timeout); chart validation requires more than 1 ms. Other gateway/auth/LB idle limits still apply. Use an explicit hostname instead of `${DOMAIN_NAME}` if that substitution is unsupported. Choose a controller/Helm timeout allowing the readiness delay, image pull and scheduling time; the chart's startup budget is 750 seconds and progress deadline is 1,200 seconds, independently.
 
 If creating the key with Kubernetes tooling, **explicitly select the PCAI context**; never rely on the workstation's current context. Example for an authorized operator:
 

@@ -44,7 +44,7 @@ ezua:
     # Put this explicitly in PCAI override values so its controller substitutes it.
     endpoint: "pcai-probe.${DOMAIN_NAME}"
     istioGateway: istio-system/ezaf-gateway
-    timeout: 0s
+    timeout: 900s
   # Off by default: do not add a cross-namespace policy without platform approval.
   # Disabling this does NOT disable any existing gateway/platform authorization.
   authorizationPolicy:

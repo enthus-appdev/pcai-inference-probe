@@ -86,7 +86,7 @@ jobs:
           import yaml
           root = Path('charts/pcai-inference-probe')
           chart = yaml.safe_load((root / 'Chart.yaml').read_text())
-          chart['version'] = '0.1.0-ci.' + os.environ['GITHUB_RUN_NUMBER']
+          chart['version'] += '-ci.' + os.environ['GITHUB_RUN_NUMBER']
           (root / 'Chart.yaml').write_text(yaml.safe_dump(chart, sort_keys=False))
           values = yaml.safe_load((root / 'values.yaml').read_text())
           values['image']['tag'] = 'sha-' + os.environ['GITHUB_SHA']
@@ -97,7 +97,7 @@ jobs:
           helm lint charts/pcai-inference-probe
           helm package charts/pcai-inference-probe --destination dist
           cp dist/*.tgz dist/pcai-inference-probe.tar.gz
-          sha256sum dist/*.tgz dist/*.tar.gz > dist/SHA256SUMS
+          (cd dist && sha256sum *.tgz *.tar.gz > SHA256SUMS)
           printf '%s\n' 'ghcr.io/enthus-appdev/pcai-inference-probe@${{ steps.publish.outputs.digest }}' > dist/IMAGE.txt
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

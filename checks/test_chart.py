@@ -61,7 +61,15 @@ class ChartTests(unittest.TestCase):
         route = next(d for d in docs if d["kind"] == "VirtualService")
         self.assertEqual(route["spec"]["hosts"], ["probe.example.invalid"])
         self.assertEqual(route["spec"]["http"][0]["route"][0]["destination"]["host"], "probe-test.probe-namespace.svc.cluster.local")
-        self.assertEqual(route["spec"]["http"][0]["timeout"], "0s")
+        self.assertEqual(route["spec"]["http"][0]["timeout"], "900s")
+
+    def test_route_timeout_requires_more_than_one_millisecond(self):
+        for timeout in ["0s", "0ms", "1ms", "-1s", "invalid"]:
+            with self.subTest(timeout=timeout):
+                render({"ezua": {"virtualService": {"timeout": timeout}}}, success=False)
+        for timeout in ["2ms", "10ms", "1s", "900s", "15m", "1h"]:
+            with self.subTest(timeout=timeout):
+                render({"ezua": {"virtualService": {"timeout": timeout}}})
 
     def test_local_no_istio_render(self):
         self.assertEqual({d["kind"] for d in render({"ezua": {"virtualService": {"enabled": False}}})}, {"Deployment", "Service"})
