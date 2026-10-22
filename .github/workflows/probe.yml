@@ -99,7 +99,7 @@ jobs:
           cp dist/*.tgz dist/pcai-inference-probe.tar.gz
           (cd dist && sha256sum *.tgz *.tar.gz > SHA256SUMS)
           printf '%s\n' 'ghcr.io/enthus-appdev/pcai-inference-probe@${{ steps.publish.outputs.digest }}' > dist/IMAGE.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           name: pcai-inference-probe-framework
