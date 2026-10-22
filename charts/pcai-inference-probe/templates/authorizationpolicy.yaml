@@ -1,0 +1,19 @@
+{{- if .Values.ezua.authorizationPolicy.enabled }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: pcai-probe-auth-{{ printf "%s/%s" .Release.Namespace .Release.Name | sha256sum | trunc 16 }}
+  namespace: {{ .Values.ezua.authorizationPolicy.namespace | quote }}
+spec:
+  action: CUSTOM
+  provider:
+    name: {{ .Values.ezua.authorizationPolicy.providerName | quote }}
+  selector:
+    matchLabels:
+      {{- toYaml .Values.ezua.authorizationPolicy.matchLabels | nindent 6 }}
+  rules:
+    - to:
+        - operation:
+            hosts:
+              - {{ required "An endpoint is required for host-scoped authorization" .Values.ezua.virtualService.endpoint | quote }}
+{{- end }}

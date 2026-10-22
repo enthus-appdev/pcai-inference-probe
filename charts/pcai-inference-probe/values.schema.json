@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["replicaCount", "image", "auth", "resources", "shm", "persistence", "ezua"],
+  "properties": {
+    "replicaCount": {"type": "integer", "minimum": 0, "maximum": 1},
+    "image": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "tag", "digest", "pullPolicy"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "tag": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$"},
+        "pullPolicy": {"enum": ["IfNotPresent", "Always", "Never"]}
+      }
+    },
+    "imagePullSecrets": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1}}}},
+    "auth": {
+      "type": "object", "additionalProperties": false, "required": ["existingSecret", "secretKey"],
+      "properties": {
+        "existingSecret": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$", "maxLength": 253},
+        "secretKey": {"type": "string", "pattern": "^[a-zA-Z0-9._-]+$"}
+      }
+    },
+    "resources": {
+      "type": "object", "additionalProperties": false, "required": ["requests", "limits"],
+      "properties": {
+        "requests": {"$ref": "#/definitions/cpuOnlyResources"},
+        "limits": {"$ref": "#/definitions/cpuOnlyResources"}
+      }
+    },
+    "shm": {"type": "object", "additionalProperties": false, "required": ["sizeLimit"], "properties": {"sizeLimit": {"$ref": "#/definitions/storageSize"}}},
+    "persistence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enabled", "existingClaim", "size", "accessMode", "retainOnDelete"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "existingClaim": {"type": "string"},
+        "size": {"$ref": "#/definitions/storageSize"},
+        "storageClass": {"type": ["null", "string"]},
+        "accessMode": {"enum": ["ReadWriteOnce", "ReadWriteOncePod", "ReadWriteMany"]},
+        "retainOnDelete": {"type": "boolean"}
+      }
+    },
+    "maxBodyBytes": {"type": "integer", "minimum": 1, "maximum": 33554432},
+    "readyDelaySeconds": {"type": "integer", "minimum": 0, "maximum": 600},
+    "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+    "tolerations": {"type": "array", "items": {"type": "object"}},
+    "ezua": {
+      "type": "object", "additionalProperties": true, "required": ["virtualService", "authorizationPolicy"],
+      "properties": {
+        "virtualService": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "endpoint", "istioGateway", "timeout"],
+          "properties": {
+            "enabled": {"type": "boolean"}, "endpoint": {"type": "string", "minLength": 1},
+            "istioGateway": {"type": "string", "minLength": 1}, "timeout": {"type": "string", "pattern": "^[0-9]+(ms|s|m|h)$"}
+          }
+        },
+        "authorizationPolicy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["enabled", "namespace", "providerName", "matchLabels"],
+          "properties": {
+            "enabled": {"type": "boolean"}, "namespace": {"type": "string", "minLength": 1},
+            "providerName": {"type": "string", "minLength": 1},
+            "matchLabels": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}}
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "storageSize": {"type": "string", "pattern": "^[1-9][0-9]*(Ki|Mi|Gi|Ti)$"},
+    "cpuOnlyResources": {
+      "type": "object", "additionalProperties": false, "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": {"type": "string", "pattern": "^([0-9]+m|[0-9]+([.][0-9]+)?)$"},
+        "memory": {"$ref": "#/definitions/storageSize"},
+        "ephemeral-storage": {"$ref": "#/definitions/storageSize"}
+      }
+    }
+  }
+}

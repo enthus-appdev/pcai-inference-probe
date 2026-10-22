@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PCAI CPU inference probe</title><script src="/app.js" defer></script></head>
+<body>
+<h1>PCAI CPU inference probe</h1>
+<p>No GPU or model is used. This page is public; diagnostic APIs require the probe key.
+A gateway may additionally require platform authentication.</p>
+<label>Probe API key <input id="key" type="password" autocomplete="off" spellcheck="false"></label>
+<p>The key stays in this page's memory: it is not saved in browser storage or placed in URLs.</p>
+<p>
+<button data-action="anonymous">Anonymous model-list request</button>
+<button data-action="report">Diagnostics</button>
+<button data-action="models">Mock model list</button>
+<button data-action="stream">Five-event SSE test</button>
+<button data-action="payload">32 KiB payload test</button>
+<button data-action="shm">Write/clean 32.625 MiB in SHM</button>
+<button data-action="marker">Read persistence marker</button>
+<button data-action="create">Create marker if absent</button>
+</p>
+<p>SHM tests explicitly write temporary data and clean only their own files.
+A cache marker survives pod replacement only if storage really is persistent.</p>
+<pre id="output" aria-live="polite">Choose a test. Mock chat endpoints do not perform inference.</pre>
+</body></html>

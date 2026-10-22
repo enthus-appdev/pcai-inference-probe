@@ -1,0 +1,124 @@
+{{- $secret := required "Set auth.existingSecret to a pre-created API-key Secret in the release namespace" .Values.auth.existingSecret -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "probe.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  progressDeadlineSeconds: 1200
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pcai-inference-probe
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "probe.labels" . | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: probe
+          {{- if .Values.image.digest }}
+          image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+          {{- else }}
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: void
+            - name: PROBE_API_KEY_FILE
+              value: /var/run/probe-key/api-key
+            - name: PROBE_CACHE_DIR
+              value: /var/lib/pcai-probe
+            - name: PROBE_CACHE_PERSISTENT
+              value: {{ .Values.persistence.enabled | quote }}
+            - name: PROBE_MAX_BODY_BYTES
+              value: {{ .Values.maxBodyBytes | quote }}
+            - name: PROBE_READY_DELAY_SECONDS
+              value: {{ .Values.readyDelaySeconds | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 150
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            - name: probe-key
+              mountPath: /var/run/probe-key
+              readOnly: true
+            - name: shm
+              mountPath: /dev/shm
+            - name: cache
+              mountPath: /var/lib/pcai-probe
+      volumes:
+        - name: probe-key
+          secret:
+            secretName: {{ $secret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.auth.secretKey | quote }}
+                path: api-key
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shm.sizeLimit }}
+        - name: cache
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-cache" .Release.Name) | quote }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: 256Mi
+          {{- end }}

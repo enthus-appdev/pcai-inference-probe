@@ -1,0 +1,11 @@
+apiVersion: v2
+name: pcai-inference-probe
+description: CPU-only PCAI framework probe for ingress, API auth, SSE, SHM and storage
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/enthus-appdev/pcai-inference-probe
+sources:
+  - https://github.com/enthus-appdev/pcai-inference-probe
+annotations:
+  licenses: Apache-2.0

@@ -1,0 +1,55 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/enthus-appdev/pcai-inference-probe
+  tag: latest
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Pre-create this Secret in the framework release namespace. No inline key value.
+auth:
+  existingSecret: pcai-inference-probe-api
+  secretKey: api-key
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+    ephemeral-storage: 64Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+    ephemeral-storage: 512Mi
+
+shm:
+  sizeLimit: 2Gi
+
+persistence:
+  enabled: false
+  existingClaim: ""
+  size: 1Gi
+  storageClass: null
+  accessMode: ReadWriteOnce
+  retainOnDelete: true
+
+maxBodyBytes: 8388608
+readyDelaySeconds: 0
+nodeSelector: {}
+tolerations: []
+
+ezua:
+  virtualService:
+    enabled: true
+    # Put this explicitly in PCAI override values so its controller substitutes it.
+    endpoint: "pcai-probe.${DOMAIN_NAME}"
+    istioGateway: istio-system/ezaf-gateway
+    timeout: 0s
+  # Off by default: do not add a cross-namespace policy without platform approval.
+  # Disabling this does NOT disable any existing gateway/platform authorization.
+  authorizationPolicy:
+    enabled: false
+    namespace: istio-system
+    providerName: oauth2-proxy
+    matchLabels:
+      istio: ingressgateway

@@ -1,0 +1,22 @@
+{{- if .Values.ezua.virtualService.enabled }}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "probe.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ required "Set ezua.virtualService.endpoint" .Values.ezua.virtualService.endpoint | quote }}
+  gateways:
+    - {{ .Values.ezua.virtualService.istioGateway | quote }}
+  http:
+    - timeout: {{ .Values.ezua.virtualService.timeout | quote }}
+      retries:
+        attempts: 0
+      route:
+        - destination:
+            host: {{ printf "%s.%s.svc.cluster.local" .Release.Name .Release.Namespace }}
+            port:
+              number: 8080
+{{- end }}
