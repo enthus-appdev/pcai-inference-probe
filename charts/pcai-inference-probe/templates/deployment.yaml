@@ -140,8 +140,50 @@ spec:
             - name: wireguard-config
               mountPath: /var/run/wireguard
               readOnly: true
+        {{- if .Values.wireguard.https.enabled }}
+        - name: wireguard-https
+          image: {{ printf "%s@%s" .Values.wireguard.https.image.repository .Values.wireguard.https.image.digest | quote }}
+          imagePullPolicy: {{ .Values.wireguard.https.image.pullPolicy }}
+          command: [/usr/local/bin/wstunnel]
+          args:
+            - client
+            - --tls-verify-certificate
+            - --http-upgrade-path-prefix
+            - {{ .Values.wireguard.https.pathPrefix | quote }}
+            - --http-headers-file
+            - /var/run/wireguard-https/headers
+            - --log-lvl
+            - WARN
+            - --websocket-ping-frequency
+            - "20"
+            - --dns-resolver
+            - system://0.0.0.0
+            - -L
+            - udp://127.0.0.1:51821:127.0.0.1:51820?timeout_sec=0
+            - {{ required "Set wireguard.https.endpoint when HTTPS transport is enabled" .Values.wireguard.https.endpoint | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            {{- toYaml .Values.wireguard.https.resources | nindent 12 }}
+          volumeMounts:
+            - name: wireguard-https-auth
+              mountPath: /var/run/wireguard-https
+              readOnly: true
+        {{- end }}
         {{- end }}
       volumes:
+        {{- if and .Values.wireguard.enabled .Values.wireguard.https.enabled }}
+        - name: wireguard-https-auth
+          secret:
+            secretName: {{ required "Set wireguard.https.existingSecret when HTTPS transport is enabled" .Values.wireguard.https.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.wireguard.https.secretKey | quote }}
+                path: headers
+        {{- end }}
         {{- if .Values.wireguard.enabled }}
         - name: wireguard-config
           secret:

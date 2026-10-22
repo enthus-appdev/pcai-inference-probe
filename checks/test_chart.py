@@ -101,6 +101,46 @@ class ChartTests(unittest.TestCase):
             with self.subTest(values=values):
                 render(values, success=False)
 
+    def test_https_transport_has_separate_secret_and_verified_tls(self):
+        docs = render({"wireguard": {"enabled": True, "existingSecret": "test-wireguard", "https": {
+            "enabled": True, "existingSecret": "test-ws-auth", "endpoint": "wss://edge.example.invalid"
+        }}})
+        dep = next(d for d in docs if d["kind"] == "Deployment")
+        spec = dep["spec"]["template"]["spec"]
+        wg = next(c for c in spec["containers"] if c["name"] == "wireguard")
+        https = next(c for c in spec["containers"] if c["name"] == "wireguard-https")
+        self.assertEqual(https["command"], ["/usr/local/bin/wstunnel"])
+        self.assertIn("--tls-verify-certificate", https["args"])
+        self.assertIn("--http-headers-file", https["args"])
+        self.assertIn("system://0.0.0.0", https["args"])
+        self.assertIn("udp://127.0.0.1:51821:127.0.0.1:51820?timeout_sec=0", https["args"])
+        self.assertEqual(https["args"][-1], "wss://edge.example.invalid")
+        self.assertEqual(https["securityContext"]["capabilities"], {"drop": ["ALL"]})
+        self.assertTrue(https["securityContext"]["readOnlyRootFilesystem"])
+        self.assertFalse(https["securityContext"]["allowPrivilegeEscalation"])
+        self.assertEqual([v["name"] for v in wg["volumeMounts"]], ["wireguard-config"])
+        self.assertEqual([v["name"] for v in https["volumeMounts"]], ["wireguard-https-auth"])
+        auth = next(v for v in spec["volumes"] if v["name"] == "wireguard-https-auth")["secret"]
+        self.assertEqual(auth["secretName"], "test-ws-auth")
+        self.assertFalse(auth.get("optional", False))
+        self.assertEqual(auth["defaultMode"], 0o440)
+        self.assertNotIn("Secret", {d["kind"] for d in docs})
+        self.assertNotIn("hostNetwork", spec)
+        self.assertNotIn("/dev/net/tun", json.dumps(spec))
+
+    def test_https_transport_rejects_incomplete_or_unsafe_settings(self):
+        for values in [
+            {"wireguard": {"https": {"enabled": True}}},
+            {"wireguard": {"enabled": True, "existingSecret": "test-wireguard", "https": {"enabled": True}}},
+            {"wireguard": {"https": {"endpoint": "ws://not-tls.example.invalid"}}},
+            {"wireguard": {"https": {"endpoint": "wss://user:password@example.invalid"}}},
+            {"wireguard": {"https": {"endpoint": "wss://example.invalid?token=not-allowed"}}},
+            {"wireguard": {"https": {"password": "must-not-be-in-values"}}},
+            {"wireguard": {"https": {"resources": {"limits": {"nvidia.com/gpu": 1}}}}},
+        ]:
+            with self.subTest(values=values):
+                render(values, success=False)
+
     def test_numeric_environment_is_decimal_not_scientific_notation(self):
         for values, expected_body, expected_delay in [
             ({}, "8388608", "0"),

@@ -213,6 +213,60 @@ Readiness uses wireproxy's `/readyz` on its internal status port9081. Set `Check
 
 Disable `wireguard.enabled` to remove the sidecar/mount. Peer removal, revocation of tunnel credentials and deletion of the dedicated Secret are separate operator cleanup steps; do not remove existing server peers or the retained model-cache PVC.
 
+## Optional HTTPS transport for WireGuard
+
+If outbound UDP is unusable, `wireguard.https.enabled: true` adds a second,
+non-root sidecar using pinned wstunnel v11.1.0. It transports only the local
+WireGuard UDP socket over authenticated WebSocket/TLS; it does not change the
+pod's default route. **Both VPN layers remain disabled by default.** TLS
+certificate verification is explicitly enabled; credentials are mounted from a
+separate existing Secret, never included in values or command arguments.
+
+```yaml
+wireguard:
+  enabled: true
+  existingSecret: pcai-probe-wireguard
+  https:
+    enabled: true
+    endpoint: wss://vpn.example.invalid
+    existingSecret: pcai-probe-wireguard-https
+    # pathPrefix: pcai-wireguard
+    # secretKey: headers
+```
+
+For this mode, change only the WireGuard peer's transport endpoint in
+`wireproxy.conf` to `127.0.0.1:51821`. Keep the server's public key, narrow
+`AllowedIPs`, `CheckAlive`, and reverse TCP mapping. The HTTPS-auth Secret must
+contain a `headers` file with one `Authorization: Basic <base64(username:password)>`
+line. Create the file privately using a password prompt or secret manager, then
+use `kubectl create secret generic ... --from-file=headers=<private-file>`;
+base64 is not encryption. Delete the local credential file after provisioning.
+Missing Secrets fail closed. Only the HTTPS sidecar mounts its auth file, and
+only wireproxy mounts the WireGuard private key.
+
+The server needs an authenticated TLS reverse proxy for `/pcai-wireguard/*`,
+forwarding to a **loopback-only** wstunnel server, for example:
+
+```text
+wstunnel server --restrict-to 127.0.0.1:51820 --restrict-http-upgrade-path-prefix pcai-wireguard --log-lvl WARN ws://127.0.0.1:18081
+```
+
+Require strong HTTP Basic authentication at the TLS edge before forwarding any
+upgrade. Do not expose the loopback server publicly or remove its destination
+restriction: it must reach only the local WireGuard UDP port, not become a
+general forwarding proxy. Preserve existing edge routes and VPN peers.
+
+The wrapper image is published in the existing image package under
+`wireguard-https-sha-<commit>` tags and pinned by digest in the chart. It copies
+the upstream binary out of its `0700` home directory so PCAI-assigned UIDs can
+execute it. Startup is tested at UID `10000004` with a read-only filesystem,
+no network, and no capabilities. The upstream BSD-3-Clause notice is included.
+The optional sidecar requests another `25m` CPU / `32Mi` memory and limits
+`250m` / `128Mi`. WebSocket reachability alone is **not** qualification: verify
+a fresh WireGuard handshake, protected API responses and incremental SSE from
+the intended client network. UDP-over-TCP can suffer head-of-line blocking;
+this workaround is not a performance recommendation.
+
 ## Runtime settings
 
 `PROBE_API_KEY_FILE` (default `/var/run/probe-key/api-key`), `PROBE_CACHE_DIR`, `PROBE_MAX_BODY_BYTES`, `PROBE_READY_DELAY_SECONDS`, `PROBE_CACHE_PERSISTENT` and `PORT` are operator configuration. The Helm chart supplies fixed safe paths and port 8080. It intentionally has no arbitrary environment, sidecar, init-container, hostPath, RBAC or extra-resource passthrough.

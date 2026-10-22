@@ -44,6 +44,25 @@ wireguard:
     pullPolicy: IfNotPresent
   existingSecret: ""
   secretKey: wireproxy.conf
+  # Optional authenticated WebSocket/TLS wrapper for networks without usable UDP.
+  https:
+    enabled: false
+    image:
+      repository: ghcr.io/enthus-appdev/pcai-inference-probe
+      tag: wireguard-https-sha-94ecdbfa64c6d349d00ade4f461f7bc1e1fce60d
+      digest: sha256:67a75f3507ce6c0bded9c1d993026c52f8e7eaa10a193a19bbe9d0f245fb5e48
+      pullPolicy: IfNotPresent
+    endpoint: ""
+    pathPrefix: pcai-wireguard
+    existingSecret: ""
+    secretKey: headers
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 250m
+        memory: 128Mi
   resources:
     requests:
       cpu: 25m
