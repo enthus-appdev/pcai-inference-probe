@@ -38,7 +38,7 @@ jobs:
           node --check probe/app.js
           helm lint charts/pcai-inference-probe
           git diff --check
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build CPU-only smoke image
         uses: docker/build-push-action@v6
         with:
