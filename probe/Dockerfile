@@ -1,4 +1,4 @@
-FROM docker.io/library/python:3.13-slim-bookworm@sha256:a881a81282cca8c57f97014867fa651def1b3799030cc6b1cff45ed55ba8ef36
+FROM docker.io/library/python:3.15-slim-bookworm@sha256:4e03260adeeebafccd084f3584e6b84823aba5651cfb53ef8a078ed441ddf9cd
 LABEL org.opencontainers.image.source="https://github.com/enthus-appdev/pcai-inference-probe" \
       org.opencontainers.image.title="pcai-inference-probe" \
       org.opencontainers.image.licenses="Apache-2.0"
